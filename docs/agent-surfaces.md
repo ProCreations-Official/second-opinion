@@ -24,6 +24,8 @@ second-opinion wait JOB_ID
 
 `--background` is the default workflow taught to installed agent skills. It returns a job id immediately, writes output under `~/.second-opinion/jobs/`, and lets the parent agent keep working while the subagent runs. It also opens the native task manager by default; use `--manager terminal` or `--manager none` to choose a terminal window or no window.
 
+`second-opinion team` extends that workflow into a true parallel worker pool. Each worker gets its own fresh native harness process, job id, role, model/effort settings, and task record. Built-in `build`, `review`, and `balanced` strategies create distinct work lenses; repeated `--role` flags define custom assignments. A team opens at most one manager window, and `second-opinion wait TEAM_ID` collects all workers.
+
 The CLI wraps the target agent's documented non-interactive mode:
 
 - Codex: `codex exec`
@@ -34,9 +36,13 @@ The CLI wraps the target agent's documented non-interactive mode:
 
 ## Manager Surfaces
 
-`second-opinion app` opens a separate cross-platform Tk window. `second-opinion tui` offers the same core workflow in a terminal. Both discover jobs from Second Opinion's own local job directory, including tasks spawned by a coding agent, and support live output, steering messages, next-turn model overrides, stop, retry, archive, restore, and task creation.
+`second-opinion app` opens a separate cross-platform Tk window. `second-opinion tui` offers the same core workflow in a terminal. Both discover jobs from Second Opinion's own local job directory, including teams and tasks spawned by a coding agent, and support live output, steering messages, next-turn model and reasoning-effort overrides, stop, retry, archive, restore, and task creation.
 
 The manager never embeds into an agent application. It stays idle except for a small metadata/log poll and caps the displayed output. Closing it does not terminate active agent jobs. Follow-up messages launch through the existing task's same native harness and preserve recent output context.
+
+## Benchmark routing tool
+
+`second-opinion benchmarks` reads Artificial Analysis's keyless public model and Coding Agent Index pages using only the Python standard library. No API key or Artificial Analysis account is required. The CLI stores a small six-hour cache under `~/.second-opinion/cache/`, exposes JSON for manager-model routing, and includes visible source attribution. It does not send repository contents, prompts, or task records to Artificial Analysis.
 
 ## Routing Tips
 

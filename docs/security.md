@@ -9,6 +9,7 @@ Second Opinion is a local orchestration helper. It does not proxy prompts throug
 - Updates its own CLI file when `second-opinion update` downloads a newer published version.
 - Runs installed agent CLIs in non-interactive mode when asked.
 - Stores task metadata and logs under `~/.second-opinion/jobs/` so either local manager can show and steer delegated work.
+- Stores a small, public Artificial Analysis benchmark cache under `~/.second-opinion/cache/`. Benchmark fetches send no repository content, task text, credentials, or job metadata and require no API key.
 - Opens an optional native Tk task-manager process for background tasks by default. `--manager terminal` uses a terminal window and `--manager none` opens nothing.
 
 ## What It Does Not Do
@@ -36,6 +37,8 @@ second-opinion uninstall --all
 ## Delegation Safety
 
 `work` mode is the CLI default and may edit files. Use explicit `--mode consult` when the user wants a read-only review, plan, or risk analysis.
+
+Parallel `team` runs create multiple native harness processes. Give work-mode workers non-overlapping file or subsystem ownership. Second Opinion adds collision-avoidance instructions, but it cannot make arbitrary simultaneous edits conflict-free. Review strategies default to consult mode, and the parent agent remains responsible for synthesis and verification.
 
 The generated skill tells parent agents not to pass secrets and not to create recursive delegation chains unless explicitly requested.
 

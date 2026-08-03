@@ -39,6 +39,10 @@ class RegistryTests(unittest.TestCase):
             self.assertIn("second-opinion ask auto", skill)
             self.assertIn("--background", skill)
             self.assertIn("second-opinion wait JOB_ID", skill)
+            self.assertIn("second-opinion team codex", skill)
+            self.assertIn("second-opinion benchmarks --kind models", skill)
+            self.assertIn("needs no API key", skill)
+            self.assertIn("worker-pool orchestrator, not only a review tool", skill)
             self.assertIn("model agnostic", skill)
             self.assertIn("Prefer capability fit over model branding", skill)
             self.assertIn("Practical routing tips", skill)
@@ -122,7 +126,7 @@ class CliCommandTests(unittest.TestCase):
             result = self.run_cli("status", "--json", home=Path(temp))
             self.assertEqual(result.returncode, 0, result.stderr)
             payload = json.loads(result.stdout)
-            self.assertEqual(payload["version"], "1.5.0")
+            self.assertEqual(payload["version"], "1.6.0")
             self.assertIn("codex", payload["agents"])
             self.assertIn("antigravity", payload["agents"])
 
@@ -231,7 +235,151 @@ class CliCommandTests(unittest.TestCase):
         self.assertIn("Deprecated and ignored", source)
         self.assertNotIn("TimeoutExpired", source)
         self.assertNotIn("subprocess.TimeoutExpired", source)
-        self.assertEqual(module.VERSION, "1.5.0")
+        self.assertEqual(module.VERSION, "1.6.0")
+
+    def test_reasoning_effort_uses_each_native_harness_flag(self):
+        cases = (
+            ("codex", "--config model_reasoning_effort=xhigh"),
+            ("claude", "--effort xhigh"),
+            ("opencode", "--variant xhigh"),
+            ("grok", "--reasoning-effort xhigh"),
+            ("antigravity", "--effort high"),
+        )
+        for agent, expected in cases:
+            with self.subTest(agent=agent):
+                effort = "high" if agent == "antigravity" else "xhigh"
+                result = self.run_cli(
+                    "ask",
+                    agent,
+                    "--reasoning",
+                    effort,
+                    "--dry-run",
+                    "--",
+                    "work on this",
+                )
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertIn(expected, result.stdout)
+
+    def test_team_dry_run_builds_five_parallel_role_commands(self):
+        result = self.run_cli(
+            "team",
+            "codex",
+            "--count",
+            "5",
+            "--strategy",
+            "balanced",
+            "--model",
+            "gpt-5.6-luna",
+            "--reasoning",
+            "xhigh",
+            "--manager",
+            "none",
+            "--dry-run",
+            "--",
+            "Implement and review this feature",
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.count("# worker "), 5)
+        self.assertEqual(result.stdout.count("codex exec"), 5)
+        self.assertIn("Specialized role: implementation", result.stdout)
+        self.assertIn("Specialized role: independent reviewer", result.stdout)
+        self.assertIn("--model gpt-5.6-luna", result.stdout)
+        self.assertIn("model_reasoning_effort=xhigh", result.stdout)
+
+    def test_keyless_artificial_analysis_model_parser(self):
+        module = load_cli_module()
+        row = {
+            "id": "1",
+            "slug": "worker-model",
+            "name": "Worker Model (high)",
+            "releaseDate": "2026-08-01",
+            "isReasoning": True,
+            "intelligenceIndex": 50.0,
+            "codingIndex": 72.0,
+            "agenticIndex": 47.0,
+            "intelligenceIndexTimePerTask": 120.0,
+            "intelligenceIndexCostPerTask": {"cost": {"total": 0.125}},
+            "timescaleData": {"medianOutputSpeed": 200.0},
+            "price1mInputTokens": 0.2,
+            "price1mOutputTokens": 1.0,
+            "cacheHitPrice": 0.02,
+            "creator": {"name": "Example Lab"},
+        }
+        rsc = '1:{"initialData":' + json.dumps([row], separators=(",", ":")) + "}"
+        page = (
+            "<html>Artificial Analysis Intelligence Index v4.1"
+            "<script>self.__next_f.push("
+            + json.dumps([1, rsc], separators=(",", ":"))
+            + ")</script></html>"
+        )
+        payload = module.parse_artificial_analysis_models(page)
+        self.assertEqual(payload["index_version"], "4.1")
+        model = payload["models"][0]
+        self.assertEqual(model["coding_index"], 72.0)
+        self.assertEqual(model["agentic_index"], 47.0)
+        self.assertEqual(model["cost_per_task_usd"], 0.125)
+        self.assertEqual(model["time_per_task_minutes"], 2.0)
+
+    def test_keyless_artificial_analysis_coding_agent_parser(self):
+        module = load_cli_module()
+        row = {
+            "id": "agent-1",
+            "agentName": "Codex",
+            "displayLabel": "Codex - Worker Model (xhigh)",
+            "display": {
+                "model": "Worker Model (xhigh)",
+                "creator": {"model": "Example Lab"},
+            },
+            "indexScore": 0.625,
+            "mean": {
+                "costUsd": 0.25,
+                "agentWallTimeSec": 300,
+                "steps": 42,
+                "totalTokens": 1234,
+            },
+        }
+        rsc = '1:{"benchmarkRows":' + json.dumps([row], separators=(",", ":")) + "}"
+        page = "<script>self.__next_f.push(" + json.dumps([1, rsc], separators=(",", ":")) + ")</script>"
+        payload = module.parse_artificial_analysis_agents(page)
+        agent = payload["agents"][0]
+        self.assertEqual(agent["harness"], "Codex")
+        self.assertEqual(agent["coding_agent_index"], 62.5)
+        self.assertEqual(agent["cost_per_task_usd"], 0.25)
+        self.assertEqual(agent["time_per_task_minutes"], 5.0)
+
+    def test_benchmark_loader_needs_no_api_key_and_caches_public_data(self):
+        module = load_cli_module()
+        row = {
+            "slug": "cached-model",
+            "name": "Cached Model",
+            "intelligenceIndex": 40,
+            "codingIndex": 60,
+            "agenticIndex": 35,
+            "creator": {"name": "Example Lab"},
+        }
+        rsc = '1:{"initialData":' + json.dumps([row], separators=(",", ":")) + "}"
+        page = "<script>self.__next_f.push(" + json.dumps([1, rsc], separators=(",", ":")) + ")</script>"
+        with tempfile.TemporaryDirectory() as temp:
+            previous_home = os.environ.get("SECOND_OPINION_HOME")
+            previous_key = os.environ.pop("AA_API_KEY", None)
+            os.environ["SECOND_OPINION_HOME"] = temp
+            source = Path(temp) / "public.html"
+            source.write_text(page, encoding="utf-8")
+            module.ARTIFICIAL_ANALYSIS_MODELS_URL = source.as_uri()
+            try:
+                fetched = module.load_benchmark_data("models")
+                self.assertEqual(fetched["cache"], "refreshed")
+                source.unlink()
+                cached = module.load_benchmark_data("models", offline=True)
+                self.assertEqual(cached["cache"], "hit")
+                self.assertEqual(cached["models"][0]["coding_index"], 60)
+            finally:
+                if previous_home is None:
+                    os.environ.pop("SECOND_OPINION_HOME", None)
+                else:
+                    os.environ["SECOND_OPINION_HOME"] = previous_home
+                if previous_key is not None:
+                    os.environ["AA_API_KEY"] = previous_key
 
     def test_obsolete_freedomclaude_flags_are_noops(self):
         with tempfile.TemporaryDirectory() as temp:

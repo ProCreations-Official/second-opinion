@@ -2,11 +2,11 @@
 
 [![CI](https://github.com/SSHdotCodes/second-opinion/actions/workflows/ci.yml/badge.svg)](https://github.com/SSHdotCodes/second-opinion/actions/workflows/ci.yml)
 
-Second Opinion lets installed AI coding agents use each other as opt-in subagents.
+Second Opinion turns installed AI coding agents into steerable, parallel worker teams for each other. It handles implementation, testing, investigation, review, documentation, and integration work—not just code review.
 
 Background tasks open a separate, lightweight native task-manager window by default. It shows every active Second Opinion task—even tasks another coding agent started—and lets you steer the work, send follow-up messages, choose the model for the next turn, stop or retry a run, and archive finished tasks. The manager is built with Python's native Tk toolkit rather than Electron, a browser, or an always-on server, so it starts quickly and keeps memory use small on macOS, Windows, and Linux.
 
-If you are in Claude Code and want Codex to review a risky patch, Claude can run Second Opinion and delegate that slice to Codex. If you are in Codex, the same install gives Codex a skill for delegating to Claude Code, OpenCode, Grok Build, or Google Antigravity. Each agent keeps its own auth, model access, tools, and safety behavior.
+For example, Claude Code can orchestrate five fresh Codex workers using GPT-5.6 Luna at `xhigh`: one implements, one writes tests, two inspect different risks, and one handles integration. Luna can make that pool much cheaper while parallel work improves throughput. The direction is completely reversible: Codex can orchestrate Claude Sonnet 5 workers, Grok 4.5 workers through Grok Build, or any supported model the selected harness can access. Each worker keeps its native CLI's auth, model access, tools, and safety behavior.
 
 Second Opinion is model agnostic. It routes between installed agent surfaces and the user's existing model/provider setup instead of hardcoding one model. The generated skills teach each parent agent to reason about when another chat is useful, which agent's strongest capabilities fit the scenario, and when a same-agent fresh-context pass is the only sensible option.
 
@@ -86,6 +86,57 @@ second-opinion wait JOB_ID
 
 The installed skills teach each agent to start subagents in the background by default. That lets the parent agent continue its own non-overlapping work while the subagent runs. Later, the parent runs `second-opinion wait JOB_ID` to collect the subagent output.
 
+## Parallel Worker Teams
+
+`second-opinion team` starts one independent native harness process and fresh context per worker. The parent remains the orchestrator and can continue working, steer each task, change its next-turn model/effort, and synthesize the results.
+
+Claude Code orchestrating five lower-cost Codex workers:
+
+```bash
+second-opinion team codex \
+  --from claude \
+  --count 5 \
+  --strategy balanced \
+  --model gpt-5.6-luna \
+  --reasoning xhigh \
+  --cwd "$PWD" \
+  -- "Implement the feature, add tests, inspect risks, and prepare integration in parallel."
+```
+
+Codex orchestrating Claude or Grok workers works the same way:
+
+```bash
+second-opinion team claude --from codex --count 5 --strategy build --model claude-sonnet-5 --reasoning xhigh -- "Build these non-overlapping slices."
+second-opinion team grok --from codex --count 5 --strategy review --model grok-4.5 --reasoning high --manager terminal -- "Review from five distinct angles."
+```
+
+The built-in strategies are:
+
+- `build`: core implementation, tests, edge-case hardening, performance/tooling, and integration/docs.
+- `review`: correctness, security, tests, performance, and product/integration review; workers default to consult mode.
+- `balanced`: a mix of implementation, tests, independent review, security/performance review, and integration/docs.
+
+Repeat `--role "..."` to provide custom worker assignments. Use `--mode work` or `--mode consult` to force every worker into the same mode. The CLI accepts 1–32 workers, records the team/role/index on every task, opens only one manager, and returns immediately while all workers run in parallel. `second-opinion wait TEAM_ID` collects the whole team; `second-opinion jobs --team TEAM_ID` lists just that pool.
+
+Model and effort values pass through the specialized harness: Codex uses `codex exec` and its reasoning config, Claude Code uses `claude -p --effort`, OpenCode uses `opencode run --variant`, Grok Build uses `grok -p --reasoning-effort`, and Antigravity uses `agy --effort`. Availability and accepted effort levels remain controlled by each installed provider CLI.
+
+Parallel editing needs deliberate decomposition. Built-in roles include collision-avoidance instructions, but custom non-overlapping file or subsystem assignments are safest. Workers are told to re-read files before edits and never discard concurrent changes.
+
+## Keyless Model and Harness Benchmarks
+
+The manager model can query current public [Artificial Analysis](https://artificialanalysis.ai/) data before choosing workers. This works without an Artificial Analysis API key, account, sign-in, dependency, or configuration:
+
+```bash
+second-opinion benchmarks --kind models --sort coding --max-cost 0.50 --limit 12
+second-opinion benchmarks --kind models --sort agentic --min-intelligence 45 --json
+second-opinion benchmarks --kind agents --sort agent-score --max-cost 3 --json
+second-opinion benchmarks --kind all --limit 10 --json
+```
+
+Model results expose the Artificial Analysis Intelligence, Coding, and Agentic indices; average Intelligence Index cost and time per task; model token prices; and speed when published. `--kind agents` exposes the harness-specific Artificial Analysis Coding Agent Index plus average coding-task cost, time, steps, and tokens. This matters because a model's score and a particular model+harness combination are different decisions.
+
+Public results are cached under `~/.second-opinion/cache/` for six hours to keep startup fast and network use small. Use `--refresh` to fetch immediately or `--offline` after the first fetch. Human and JSON output both preserve visible Artificial Analysis attribution and source URLs. Benchmark scores are routing evidence, not guarantees; the orchestrator should also consider task fit, installed CLIs, available subscriptions, and the exact model ids each harness accepts.
+
 The native manager opens by default for a background task. Choose a separate terminal manager or no window at all per run:
 
 ```bash
@@ -113,7 +164,7 @@ Both surfaces operate only on Second Opinion's records under `~/.second-opinion/
 - See active, queued, finished, failed, stopped, and archived tasks.
 - Read live output without loading unbounded logs into memory.
 - Send a steering message while a task is running; it queues behind the current turn.
-- Change the model passed to the task's next native provider invocation. Leave it blank to use the provider default.
+- Change the model and provider-native reasoning effort/variant passed to the task's next invocation. Leave either blank to use the provider default.
 - Stop, retry, archive, or restore tasks.
 - Start a new task with a chosen harness, workspace, mode, and optional model.
 
@@ -160,8 +211,13 @@ second-opinion install --all --yes   # install all supported skills
 second-opinion update                # update the CLI and managed skills when newer
 second-opinion uninstall --agent codex
 second-opinion status --json
-second-opinion choose --from claude --task "review auth flow"
+second-opinion choose --from claude --task "implement auth flow"
 second-opinion ask auto --from claude --cwd "$PWD" --mode consult --background -- "Investigate failing tests."
+second-opinion ask codex --from claude --cwd "$PWD" --model gpt-5.6-luna --reasoning xhigh --background -- "Implement the test fixtures."
+second-opinion team codex --from claude --count 5 --strategy balanced --model gpt-5.6-luna --reasoning xhigh -- "Build and verify this in parallel."
+second-opinion team claude --from codex --count 5 --strategy build --model claude-sonnet-5 --reasoning xhigh --manager none -- "Implement non-overlapping slices."
+second-opinion benchmarks --kind models --sort coding --max-cost 0.50 --json
+second-opinion benchmarks --kind agents --sort agent-score --json
 second-opinion ask auto --from claude --cwd "$PWD" --mode work --background --goal "Finish the migration tests and report blockers." -- "Work toward this goal in the assigned files only."
 second-opinion ask auto --from claude --cwd "$PWD" --background --manager terminal -- "Open the terminal task manager."
 second-opinion ask auto --from claude --cwd "$PWD" --background --manager none -- "Do not open a manager window."
@@ -180,7 +236,7 @@ Second Opinion is intentionally small:
 
 - No server is required.
 - No browser or Electron runtime is required; the optional native window uses Tk and caps displayed log data.
-- No API keys are handled by Second Opinion.
+- No API keys are handled by Second Opinion; its benchmark tool reads attributed public pages and needs no Artificial Analysis key.
 - Each target agent runs through its own installed CLI.
 - Claude Code runs through its documented `claude -p` non-interactive mode.
 - All agent instructions are regular skill files that users can inspect.
