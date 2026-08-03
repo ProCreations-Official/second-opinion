@@ -90,6 +90,58 @@ class RegistryTests(unittest.TestCase):
             self.assertEqual("user content", path.read_text(encoding="utf-8"))
 
 
+class MarkdownRenderingTests(unittest.TestCase):
+    def setUp(self):
+        self.module = load_cli_module()
+
+    def test_common_markdown_becomes_semantic_text_runs(self):
+        source = (
+            "\x1b[32m# Summary\x1b[0m\n\n"
+            "**Bold** and *italic* with `print('ok')` and [docs](https://example.com).\n"
+            "- [x] finished\n"
+            "1. first step\n"
+            "> quoted note\n\n"
+            "| Worker | Score |\n"
+            "| --- | ---: |\n"
+            "| Grok | 95 |\n\n"
+            "```python\nreturn True\n```\n"
+        )
+        runs = self.module.markdown_runs(source)
+        rendered = "".join(text for text, _tags, _link in runs)
+
+        self.assertIn("Summary", rendered)
+        self.assertIn("Bold and italic with print('ok') and docs.", rendered)
+        self.assertIn("☑ finished", rendered)
+        self.assertIn("1. first step", rendered)
+        self.assertIn("│ quoted note", rendered)
+        self.assertIn("Worker  │  Score", rendered)
+        self.assertIn("return True", rendered)
+        self.assertNotIn("\x1b", rendered)
+        self.assertNotIn("```", rendered)
+        self.assertNotIn("**Bold**", rendered)
+
+        self.assertTrue(any(text.startswith("Summary") and "heading1" in tags for text, tags, _ in runs))
+        self.assertTrue(any(text == "Bold" and "bold" in tags for text, tags, _ in runs))
+        self.assertTrue(any(text == "italic" and "italic" in tags for text, tags, _ in runs))
+        self.assertTrue(any(text == "print('ok')" and "inline_code" in tags for text, tags, _ in runs))
+        self.assertTrue(any(text == "return True\n" and "code_block" in tags for text, tags, _ in runs))
+        self.assertTrue(any(text == "docs" and link == "https://example.com" for text, _tags, link in runs))
+        self.assertTrue(any("Worker" in text and "table_header" in tags for text, tags, _ in runs))
+
+    def test_unsafe_links_stay_plain_and_partial_markdown_stays_visible(self):
+        runs = self.module.markdown_runs(
+            r"Open [local](file:///etc/passwd), keep file_name intact, and show \*literal\*." + "\n```\npartial"
+        )
+        rendered = "".join(text for text, _tags, _link in runs)
+
+        self.assertIn("local", rendered)
+        self.assertIn("file_name", rendered)
+        self.assertIn("*literal*", rendered)
+        self.assertIn("partial", rendered)
+        self.assertFalse(any(link for _text, _tags, link in runs))
+        self.assertTrue(any(text == "partial" and "code_block" in tags for text, tags, _ in runs))
+
+
 class CliCommandTests(unittest.TestCase):
     def run_cli(self, *args, home=None):
         env = os.environ.copy()

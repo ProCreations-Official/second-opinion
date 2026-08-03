@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Lightweight native Markdown rendering for task output, including headings, emphasis, lists, task lists, quotes, tables, fenced and inline code, and safe clickable HTTP(S)/email links.
+- A real task-manager screenshot showing Claude Code orchestrating two Grok 4.5 workers.
+
 ## GitHub Release 1.0.1 — 2026-08-03
 
 Second Opinion now orchestrates parallel implementation and review teams, with live benchmark evidence for choosing the right model and harness.

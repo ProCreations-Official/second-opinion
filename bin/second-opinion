@@ -1460,6 +1460,258 @@ def log_tail(job: dict[str, object], limit: int = 120_000) -> str:
         return ""
 
 
+MarkdownRun = tuple[str, tuple[str, ...], str | None]
+ANSI_ESCAPE_RE = re.compile(r"\x1b(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
+MARKDOWN_LINK_RE = re.compile(
+    r"(!?)\[([^\]\n]+)\]\(<?([^\s)>]+)>?(?:\s+['\"][^'\"]*['\"])?\)"
+)
+MARKDOWN_AUTOLINK_RE = re.compile(r"<((?:https?://|mailto:)[^>\s]+)>")
+MARKDOWN_TABLE_RULE_RE = re.compile(r":?-{3,}:?")
+
+
+def safe_markdown_link(target: str) -> str | None:
+    """Return a user-clickable web link while rejecting executable URI schemes."""
+    clean = target.strip()
+    try:
+        scheme = urllib.parse.urlparse(clean).scheme.lower()
+    except ValueError:
+        return None
+    return clean if scheme in {"http", "https", "mailto"} else None
+
+
+def markdown_table_cells(line: str) -> list[str]:
+    stripped = line.strip()
+    if "|" not in stripped:
+        return []
+    if stripped.startswith("|"):
+        stripped = stripped[1:]
+    if stripped.endswith("|"):
+        stripped = stripped[:-1]
+    cells = [cell.strip() for cell in stripped.split("|")]
+    return cells if len(cells) >= 2 else []
+
+
+def markdown_runs(content: str) -> list[MarkdownRun]:
+    """Parse common Markdown into lightweight semantic runs for a Tk Text widget."""
+    runs: list[MarkdownRun] = []
+
+    def emit(text: str, tags: tuple[str, ...] = (), link: str | None = None) -> None:
+        if not text:
+            return
+        if runs and runs[-1][1] == tags and runs[-1][2] == link:
+            previous, _, _ = runs[-1]
+            runs[-1] = (previous + text, tags, link)
+        else:
+            runs.append((text, tags, link))
+
+    def with_tag(tags: tuple[str, ...], tag: str) -> tuple[str, ...]:
+        return tags if tag in tags else tags + (tag,)
+
+    def inline(text: str, tags: tuple[str, ...] = (), depth: int = 0) -> None:
+        if depth >= 8:
+            emit(text, tags)
+            return
+        index = 0
+        literal_start = 0
+
+        def flush(end: int) -> None:
+            nonlocal literal_start
+            emit(text[literal_start:end], tags)
+
+        while index < len(text):
+            if text[index] == "\\" and index + 1 < len(text) and text[index + 1] in r"\\`*_{}[]()#+-.!~":
+                flush(index)
+                emit(text[index + 1], tags)
+                index += 2
+                literal_start = index
+                continue
+
+            if text[index] == "`":
+                tick_count = 1
+                while index + tick_count < len(text) and text[index + tick_count] == "`":
+                    tick_count += 1
+                delimiter = "`" * tick_count
+                close = text.find(delimiter, index + tick_count)
+                if close >= 0:
+                    flush(index)
+                    code = text[index + tick_count : close]
+                    if code.startswith(" ") and code.endswith(" ") and len(code) > 2:
+                        code = code[1:-1]
+                    emit(code, with_tag(tags, "inline_code"))
+                    index = close + tick_count
+                    literal_start = index
+                    continue
+
+            link_match = MARKDOWN_LINK_RE.match(text, index)
+            if link_match:
+                flush(index)
+                is_image, label, target = link_match.groups()
+                label_text = f"Image: {label}" if is_image else label
+                clean_target = safe_markdown_link(target)
+                emit(label_text, with_tag(tags, "link") if clean_target else tags, clean_target)
+                index = link_match.end()
+                literal_start = index
+                continue
+
+            autolink_match = MARKDOWN_AUTOLINK_RE.match(text, index)
+            if autolink_match:
+                flush(index)
+                target = autolink_match.group(1)
+                emit(target, with_tag(tags, "link"), target)
+                index = autolink_match.end()
+                literal_start = index
+                continue
+
+            matched = False
+            for delimiter, tag in (("**", "bold"), ("__", "bold"), ("~~", "strikethrough")):
+                if not text.startswith(delimiter, index):
+                    continue
+                close = text.find(delimiter, index + len(delimiter))
+                if close > index + len(delimiter):
+                    flush(index)
+                    inline(
+                        text[index + len(delimiter) : close],
+                        with_tag(tags, tag),
+                        depth + 1,
+                    )
+                    index = close + len(delimiter)
+                    literal_start = index
+                    matched = True
+                    break
+            if matched:
+                continue
+
+            if text[index] in {"*", "_"}:
+                delimiter = text[index]
+                close = text.find(delimiter, index + 1)
+                inside_word = delimiter == "_" and (
+                    (index > 0 and text[index - 1].isalnum())
+                    or (close >= 0 and close + 1 < len(text) and text[close + 1].isalnum())
+                )
+                if close > index + 1 and not text[index + 1].isspace() and not inside_word:
+                    flush(index)
+                    inline(text[index + 1 : close], with_tag(tags, "italic"), depth + 1)
+                    index = close + 1
+                    literal_start = index
+                    continue
+
+            index += 1
+
+        flush(len(text))
+
+    clean = ANSI_ESCAPE_RE.sub("", content.replace("\r\n", "\n").replace("\r", "\n"))
+    if not clean:
+        return runs
+    lines = clean.splitlines()
+    trailing_newline = clean.endswith("\n")
+    index = 0
+    in_fence = False
+    fence_character = ""
+    fence_length = 0
+
+    def finish_line(tags: tuple[str, ...] = ()) -> None:
+        if index < len(lines) - 1 or trailing_newline:
+            emit("\n", tags)
+
+    while index < len(lines):
+        line = lines[index]
+        fence_match = re.match(r"^\s*(`{3,}|~{3,})(?:[^`]*)$", line)
+        if in_fence:
+            stripped = line.lstrip()
+            if stripped.startswith(fence_character * fence_length):
+                in_fence = False
+            else:
+                emit(line, ("code_block",))
+                finish_line(("code_block",))
+            index += 1
+            continue
+        if fence_match:
+            fence = fence_match.group(1)
+            in_fence = True
+            fence_character = fence[0]
+            fence_length = len(fence)
+            index += 1
+            continue
+
+        header_cells = markdown_table_cells(line)
+        rule_cells = markdown_table_cells(lines[index + 1]) if index + 1 < len(lines) else []
+        if header_cells and len(rule_cells) == len(header_cells) and all(
+            MARKDOWN_TABLE_RULE_RE.fullmatch(cell) for cell in rule_cells
+        ):
+            for cell_index, cell in enumerate(header_cells):
+                if cell_index:
+                    emit("  │  ", ("table", "table_header"))
+                inline(cell, ("table", "table_header"))
+            emit("\n", ("table",))
+            emit("──┼──".join("─" * max(3, len(cell)) for cell in header_cells), ("table", "separator"))
+            finish_line(("table",))
+            index += 2
+            while index < len(lines):
+                cells = markdown_table_cells(lines[index])
+                if len(cells) != len(header_cells):
+                    break
+                for cell_index, cell in enumerate(cells):
+                    if cell_index:
+                        emit("  │  ", ("table",))
+                    inline(cell, ("table",))
+                finish_line(("table",))
+                index += 1
+            continue
+
+        heading = re.match(r"^\s*(#{1,6})\s+(.+?)\s*#*\s*$", line)
+        if heading:
+            level = min(len(heading.group(1)), 3)
+            inline(heading.group(2), (f"heading{level}",))
+            finish_line((f"heading{level}",))
+            index += 1
+            continue
+
+        if re.fullmatch(r"\s*(?:-{3,}|\*{3,}|_{3,})\s*", line):
+            emit("────────────────────────────────────────", ("separator",))
+            finish_line(("separator",))
+            index += 1
+            continue
+
+        quote = re.match(r"^(\s*)>\s?(.*)$", line)
+        if quote:
+            emit(f"{'  ' * (len(quote.group(1)) // 2)}│ ", ("quote",))
+            inline(quote.group(2), ("quote",))
+            finish_line(("quote",))
+            index += 1
+            continue
+
+        bullet = re.match(r"^(\s*)[-+*]\s+(.*)$", line)
+        if bullet:
+            body = bullet.group(2)
+            marker = "•"
+            task_marker = re.match(r"^\[([ xX])\]\s+(.*)$", body)
+            if task_marker:
+                marker = "☑" if task_marker.group(1).lower() == "x" else "☐"
+                body = task_marker.group(2)
+            emit(f"{'   ' * (len(bullet.group(1)) // 2)}{marker} ", ("list",))
+            inline(body, ("list",))
+            finish_line(("list",))
+            index += 1
+            continue
+
+        ordered = re.match(r"^(\s*)(\d+)[.)]\s+(.*)$", line)
+        if ordered:
+            emit(
+                f"{'   ' * (len(ordered.group(1)) // 2)}{ordered.group(2)}. ",
+                ("list",),
+            )
+            inline(ordered.group(3), ("list",))
+            finish_line(("list",))
+            index += 1
+            continue
+
+        inline(line)
+        finish_line()
+        index += 1
+
+    return runs
+
+
 def build_followup_prompt(job: dict[str, object], message: str) -> str:
     recent_output = log_tail(job, 16_000).strip()
     context = recent_output or "No prior output was captured."
@@ -2155,6 +2407,7 @@ def run_native_app(initial_job_id: str | None = None) -> int:
             )
             transcript_scroll = ttk.Scrollbar(transcript_frame, command=self.transcript.yview)
             self.transcript.configure(yscrollcommand=transcript_scroll.set)
+            self._configure_markdown_tags()
             self.transcript.grid(row=0, column=0, sticky="nsew")
             transcript_scroll.grid(row=0, column=1, sticky="ns")
 
@@ -2180,6 +2433,133 @@ def run_native_app(initial_job_id: str | None = None) -> int:
             self.message.bind("<Command-Return>", lambda _: self.send() or "break")
             root.bind("<Control-n>", lambda _: self.new_task())
             root.bind("<Command-n>", lambda _: self.new_task())
+
+        def _configure_markdown_tags(self) -> None:
+            transcript = self.transcript
+            transcript.configure(font=("TkDefaultFont", 11), spacing1=2, spacing3=3)
+            transcript.tag_configure("md_heading1", foreground=colors["text"], spacing1=12, spacing3=7)
+            transcript.tag_configure("md_heading2", foreground=colors["text"], spacing1=10, spacing3=6)
+            transcript.tag_configure("md_heading3", foreground=colors["text"], spacing1=8, spacing3=4)
+            transcript.tag_configure(
+                "md_inline_code",
+                background="#202b38",
+                foreground="#dce9f5",
+            )
+            transcript.tag_configure(
+                "md_code_block",
+                background="#0d141c",
+                foreground="#dce9f5",
+                lmargin1=14,
+                lmargin2=14,
+                rmargin=12,
+                spacing1=3,
+                spacing3=3,
+            )
+            transcript.tag_configure(
+                "md_quote",
+                foreground="#b8c7d7",
+                lmargin1=12,
+                lmargin2=12,
+                spacing1=2,
+                spacing3=2,
+            )
+            transcript.tag_configure("md_list", lmargin1=8, lmargin2=22)
+            transcript.tag_configure("md_table", lmargin1=8, lmargin2=8, spacing1=2, spacing3=2)
+            transcript.tag_configure("md_separator", foreground=colors["border"])
+            transcript.tag_configure("md_strikethrough", overstrike=True)
+            transcript.tag_configure("md_link", foreground=colors["accent"], underline=True)
+
+            transcript.tag_configure("md_font_body", font=("TkDefaultFont", 11))
+            transcript.tag_configure("md_font_body_bold", font=("TkDefaultFont", 11, "bold"))
+            transcript.tag_configure("md_font_body_italic", font=("TkDefaultFont", 11, "italic"))
+            transcript.tag_configure("md_font_body_bold_italic", font=("TkDefaultFont", 11, "bold italic"))
+            transcript.tag_configure("md_font_heading1", font=("TkDefaultFont", 18, "bold"))
+            transcript.tag_configure("md_font_heading1_italic", font=("TkDefaultFont", 18, "bold italic"))
+            transcript.tag_configure("md_font_heading2", font=("TkDefaultFont", 15, "bold"))
+            transcript.tag_configure("md_font_heading2_italic", font=("TkDefaultFont", 15, "bold italic"))
+            transcript.tag_configure("md_font_heading3", font=("TkDefaultFont", 12, "bold"))
+            transcript.tag_configure("md_font_heading3_italic", font=("TkDefaultFont", 12, "bold italic"))
+            transcript.tag_configure("md_font_code", font=("TkFixedFont", 10))
+            transcript.tag_configure("md_font_table", font=("TkFixedFont", 10))
+            transcript.tag_configure("md_font_table_bold", font=("TkFixedFont", 10, "bold"))
+
+        def _markdown_widget_tags(self, tags: tuple[str, ...]) -> tuple[str, ...]:
+            semantic = set(tags)
+            if "code_block" in semantic or "inline_code" in semantic:
+                font_tag = "md_font_code"
+            elif "table" in semantic:
+                font_tag = "md_font_table_bold" if "table_header" in semantic else "md_font_table"
+            elif "heading1" in semantic:
+                font_tag = "md_font_heading1_italic" if "italic" in semantic else "md_font_heading1"
+            elif "heading2" in semantic:
+                font_tag = "md_font_heading2_italic" if "italic" in semantic else "md_font_heading2"
+            elif "heading3" in semantic:
+                font_tag = "md_font_heading3_italic" if "italic" in semantic else "md_font_heading3"
+            elif "bold" in semantic and "italic" in semantic:
+                font_tag = "md_font_body_bold_italic"
+            elif "bold" in semantic:
+                font_tag = "md_font_body_bold"
+            elif "italic" in semantic:
+                font_tag = "md_font_body_italic"
+            else:
+                font_tag = "md_font_body"
+
+            widget_tags = [font_tag]
+            for semantic_tag in (
+                "heading1",
+                "heading2",
+                "heading3",
+                "inline_code",
+                "code_block",
+                "quote",
+                "list",
+                "table",
+                "separator",
+                "strikethrough",
+                "link",
+            ):
+                if semantic_tag in semantic:
+                    widget_tags.append(f"md_{semantic_tag}")
+            return tuple(widget_tags)
+
+        def _insert_markdown(self, content: str) -> None:
+            for tag_name in self.transcript.tag_names():
+                if str(tag_name).startswith("md_link_target_"):
+                    self.transcript.tag_delete(tag_name)
+
+            link_index = 0
+            for text, semantic_tags, target in markdown_runs(content):
+                widget_tags = list(self._markdown_widget_tags(semantic_tags))
+                if target:
+                    link_tag = f"md_link_target_{link_index}"
+                    link_index += 1
+                    self.transcript.tag_bind(
+                        link_tag,
+                        "<Button-1>",
+                        lambda _event, url=target: self._open_markdown_link(url),
+                    )
+                    self.transcript.tag_bind(
+                        link_tag,
+                        "<Enter>",
+                        lambda _event: self.transcript.configure(cursor="hand2"),
+                    )
+                    self.transcript.tag_bind(
+                        link_tag,
+                        "<Leave>",
+                        lambda _event: self.transcript.configure(cursor="xterm"),
+                    )
+                    widget_tags.append(link_tag)
+                self.transcript.insert("end", text, tuple(widget_tags))
+
+        @staticmethod
+        def _open_markdown_link(target: str) -> str:
+            import webbrowser
+
+            try:
+                webbrowser.open_new_tab(target)
+            except (OSError, webbrowser.Error):
+                pass
+            return "break"
 
         def refresh(self, force: bool = False) -> None:
             if self.closed:
@@ -2279,7 +2659,7 @@ def run_native_app(initial_job_id: str | None = None) -> int:
             at_bottom = self.transcript.yview()[1] > 0.97
             self.transcript.configure(state="normal")
             self.transcript.delete("1.0", "end")
-            self.transcript.insert("1.0", content)
+            self._insert_markdown(content)
             self.transcript.configure(state="disabled")
             if at_bottom or not self.last_log:
                 self.transcript.see("end")
