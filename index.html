@@ -6,7 +6,7 @@
     <title>Second Opinion</title>
     <meta
       name="description"
-      content="Run Codex, Claude Code, OpenCode, Grok Build, and Antigravity as steerable coding subagents with a lightweight native task manager."
+      content="Run Codex, Claude Code, OpenCode, Grok Build, and Antigravity as parallel, steerable coding-agent worker teams with keyless model benchmarks."
     />
     <style>
       :root {
@@ -355,6 +355,8 @@
         <div class="brand"><span class="mark" aria-hidden="true"></span> Second Opinion</div>
         <div class="navlinks">
           <a href="https://github.com/SSHdotCodes/second-opinion">GitHub</a>
+          <a href="#teams">Worker teams</a>
+          <a href="#benchmarks">Benchmarks</a>
           <a href="#manager">Task manager</a>
           <a href="#commands">Commands</a>
           <a href="#paths">Install paths</a>
@@ -364,8 +366,8 @@
         <div>
           <h1>Second Opinion</h1>
           <p class="lead">
-            Mix Codex, Claude Code, OpenCode, Grok Build, and Google Antigravity as model-agnostic opt-in subagents.
-            See and steer every delegated task in a fast, low-memory native window. Each agent keeps its own CLI, account, model access, provider setup, and safety settings.
+            Turn Codex, Claude Code, OpenCode, Grok Build, and Google Antigravity into parallel, model-agnostic worker teams for implementation and review.
+            Route with keyless Artificial Analysis benchmarks, then steer every task in a fast, low-memory native window. Each worker keeps its own CLI, account, model access, provider setup, and safety settings.
           </p>
           <div class="actions">
             <a class="button" href="install.sh">Download installer</a>
@@ -379,7 +381,7 @@
           </div>
           <pre>curl -fsSL https://second-opinion.ssh.codes/install.sh | bash
 
-second-opinion ask auto --from claude --cwd "$PWD" --mode consult --background -- "Review this patch."
+second-opinion team codex --from claude --count 5 --model gpt-5.6-luna --reasoning xhigh -- "Build and verify this in parallel."
 second-opinion app
 
 second-opinion update</pre>
@@ -388,12 +390,56 @@ second-opinion update</pre>
     </header>
 
     <main>
+      <section id="teams">
+        <div class="wrap">
+          <div class="section-head">
+            <div>
+              <h2>Super-powered parallel workers</h2>
+              <p>A manager model can start 1–32 fresh native-harness workers with distinct roles. Claude can orchestrate lower-cost Codex Luna workers; Codex can orchestrate Claude Sonnet or Grok workers. The direction, model, effort, and worker count are yours.</p>
+            </div>
+          </div>
+          <div class="grid">
+            <article class="agent">
+              <span class="tag">Build</span>
+              <h3>Divide implementation</h3>
+              <p>Core code, tests, edge-case hardening, tooling, and integration/docs run concurrently with collision-aware role prompts.</p>
+            </article>
+            <article class="agent">
+              <span class="tag">Review</span>
+              <h3>Five independent lenses</h3>
+              <p>Correctness, security, tests, performance, and product integration use read-only consult mode by default.</p>
+            </article>
+            <article class="agent">
+              <span class="tag">Balanced</span>
+              <h3>Work plus verification</h3>
+              <p>Mix builders and independent reviewers while the parent orchestrator keeps working, steers tasks, and synthesizes results.</p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section id="benchmarks">
+        <div class="wrap">
+          <div class="section-head">
+            <div>
+              <h2>Choose with current benchmark evidence</h2>
+              <p>The built-in Artificial Analysis tool needs no API key or account. It exposes Intelligence, Coding, and Agentic indices, average cost/time per task, and the separate harness-specific Coding Agent Index as attributed JSON for manager models.</p>
+            </div>
+          </div>
+          <div class="commands">
+            <div class="command"><strong>Model intelligence</strong><code>second-opinion benchmarks --kind models --sort intelligence --json</code></div>
+            <div class="command"><strong>Coding value</strong><code>second-opinion benchmarks --kind models --sort coding --max-cost 0.50 --json</code></div>
+            <div class="command"><strong>Harness score</strong><code>second-opinion benchmarks --kind agents --sort agent-score --json</code></div>
+          </div>
+        </div>
+      </section>
+
       <section id="manager">
         <div class="wrap">
           <div class="section-head">
             <div>
-              <h2>One place for every second opinion</h2>
-              <p>The separate task manager discovers work started by any connected coding agent. Read live output, steer the next turn, switch models, stop, retry, and archive—without modifying an agent app.</p>
+              <h2>One place for every worker</h2>
+              <p>The separate task manager discovers individual tasks and parallel teams started by any connected coding agent. Read live output, steer the next turn, switch model or effort, stop, retry, and archive—without modifying an agent app.</p>
             </div>
           </div>
           <div class="grid">
@@ -466,6 +512,9 @@ second-opinion update</pre>
             <div class="command"><strong>Main CLI</strong><code>curl -fsSL https://second-opinion.ssh.codes/install.sh | bash</code></div>
             <div class="command"><strong>Update</strong><code>second-opinion update</code></div>
             <div class="command"><strong>Claude delegation</strong><code>second-opinion ask claude --cwd "$PWD" --mode consult --background -- "Review this patch."</code></div>
+            <div class="command"><strong>Five Codex workers</strong><code>second-opinion team codex --from claude --count 5 --strategy balanced --model gpt-5.6-luna --reasoning xhigh -- "Build and verify this in parallel."</code></div>
+            <div class="command"><strong>Five Claude workers</strong><code>second-opinion team claude --from codex --count 5 --strategy build --model claude-sonnet-5 --reasoning xhigh -- "Implement non-overlapping slices."</code></div>
+            <div class="command"><strong>Keyless benchmarks</strong><code>second-opinion benchmarks --kind all --limit 10 --json</code></div>
             <div class="command"><strong>Native manager</strong><code>second-opinion app</code></div>
             <div class="command"><strong>Terminal manager</strong><code>second-opinion tui</code></div>
             <div class="command"><strong>No window</strong><code>second-opinion ask auto --background --manager none -- "Review this patch."</code></div>

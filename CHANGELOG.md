@@ -1,5 +1,30 @@
 # Changelog
 
+## GitHub Release 1.0.1 — 2026-08-03
+
+Second Opinion now orchestrates parallel implementation and review teams, with live benchmark evidence for choosing the right model and harness.
+
+### Added
+
+- `second-opinion team` for 1–32 genuinely parallel native-harness workers with `build`, `review`, `balanced`, and custom role strategies.
+- Team ids, worker roles and indices, `jobs --team TEAM_ID`, whole-team `wait`, and team-aware native/terminal manager listings.
+- Provider-native `--reasoning`/`--effort` support for Codex, Claude Code, OpenCode, Grok Build, and Antigravity, including next-turn effort steering.
+- `second-opinion benchmarks` for keyless Artificial Analysis model Intelligence, Coding, and Agentic indices, cost/time per task, pricing, and speed.
+- Harness-specific Artificial Analysis Coding Agent Index results with coding-task cost, time, steps, and tokens.
+- Six-hour benchmark caching, stale-cache fallback, offline reads, filtering, sorting, and machine-readable JSON for orchestrator models.
+
+### Changed
+
+- Generated skills and documentation now teach implementation worker pools and reciprocal orchestration, not only review-oriented delegation.
+- The task manager displays team roles and worker positions and can change both model and reasoning effort for future turns.
+- The internal CLI version advances from 1.5.0 to 1.6.0 so existing installations detect this update. `1.0.1` is the GitHub release version for this milestone.
+
+### Privacy and performance
+
+- Benchmark access requires no Artificial Analysis API key, account, sign-in, browser runtime, or third-party Python package.
+- Benchmark requests contain no repository data, prompts, or task records and retain visible Artificial Analysis attribution.
+- Teams remain opt-in local child processes; normal CLI use and coding-agent applications are unchanged.
+
 ## GitHub Release 1.0 — 2026-08-03
 
 Second Opinion's first GitHub release adds a cross-platform manager for delegated coding-agent work.
