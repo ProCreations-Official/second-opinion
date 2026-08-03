@@ -339,6 +339,9 @@ class CliCommandTests(unittest.TestCase):
                 self.assertIn("BACKGROUND_OK", log_path.read_text(encoding="utf-8"))
                 self.assertEqual(payload["state"], "finished")
                 self.assertIsNone(payload["worker_pid"])
+                for process in module.DETACHED_PROCESSES:
+                    process.wait(timeout=5)
+                module.reap_detached_processes()
             finally:
                 if previous_home is None:
                     os.environ.pop("SECOND_OPINION_HOME", None)
@@ -399,12 +402,22 @@ class CliCommandTests(unittest.TestCase):
         previous = os.environ.pop("SECOND_OPINION_MANAGER", None)
         try:
             parser = module.build_parser()
-            default_args = parser.parse_args(["ask", "codex", "--background", "--", "review"])
+            default_args = parser.parse_args(
+                ["ask", "codex", "--background", "--task", "review"]
+            )
             terminal_args = parser.parse_args(
-                ["ask", "codex", "--background", "--manager", "terminal", "--", "review"]
+                [
+                    "ask",
+                    "codex",
+                    "--background",
+                    "--manager",
+                    "terminal",
+                    "--task",
+                    "review",
+                ]
             )
             no_window_args = parser.parse_args(
-                ["ask", "codex", "--background", "--no-window", "--", "review"]
+                ["ask", "codex", "--background", "--no-window", "--task", "review"]
             )
             self.assertEqual(default_args.manager, "app")
             self.assertEqual(terminal_args.manager, "terminal")

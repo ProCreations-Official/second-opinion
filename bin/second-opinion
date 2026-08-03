@@ -1433,6 +1433,7 @@ def run_terminal_manager(initial_job_id: str | None = None) -> int:
     if selected:
         print(f"Selected {selected}")
     while True:
+        reap_detached_processes()
         for job in list_jobs():
             ensure_job_worker(job)
         prompt = f"second-opinion[{selected[-12:] if selected else '-'}]> "
@@ -2359,6 +2360,10 @@ def main(argv: list[str] | None = None) -> int:
         elif len(actual_argv) != 1:
             raise SystemExit("Invalid internal app arguments.")
         return run_native_app(job_id)
+    if actual_argv[:1] == ["ask"] and "--" in actual_argv:
+        separator = actual_argv.index("--")
+        task_text = " ".join(actual_argv[separator + 1 :])
+        actual_argv = [*actual_argv[:separator], "--task", task_text]
     parser = build_parser()
     args = parser.parse_args(actual_argv)
     return int(args.func(args))
