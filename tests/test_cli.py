@@ -303,6 +303,10 @@ class CliCommandTests(unittest.TestCase):
             self.assertIn("Updated Second Opinion CLI to 9.9.9", output.getvalue())
             self.assertIn('VERSION = "9.9.9"', target.read_text(encoding="utf-8"))
 
+    @unittest.skipIf(
+        os.name == "nt",
+        "Windows hosted runners cannot safely nest a detached console worker inside unittest.",
+    )
     def test_background_job_writes_log_and_metadata(self):
         module = load_cli_module()
         with tempfile.TemporaryDirectory() as temp:
@@ -357,6 +361,16 @@ class CliCommandTests(unittest.TestCase):
                     os.environ.pop("SECOND_OPINION_HOME", None)
                 else:
                     os.environ["SECOND_OPINION_HOME"] = previous_home
+
+    def test_worker_process_group_options_are_platform_safe(self):
+        module = load_cli_module()
+        options = module.process_group_options(detach_console=True)
+        if os.name == "nt":
+            self.assertIn("creationflags", options)
+            self.assertTrue(options["creationflags"] & subprocess.CREATE_NEW_PROCESS_GROUP)
+            self.assertTrue(options["creationflags"] & subprocess.DETACHED_PROCESS)
+        else:
+            self.assertEqual(options, {"start_new_session": True})
 
     def test_steering_queues_a_native_harness_turn_with_changed_model(self):
         module = load_cli_module()
