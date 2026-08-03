@@ -6,7 +6,7 @@
     <title>Second Opinion</title>
     <meta
       name="description"
-      content="Run Codex, Claude Code, OpenCode, Grok Build, and Antigravity as parallel, steerable coding-agent worker teams with keyless model benchmarks."
+      content="Run coding agents as parallel, steerable worker teams, route with keyless benchmarks, and create verified design images through native harness tools."
     />
     <style>
       :root {
@@ -356,6 +356,7 @@
         <div class="navlinks">
           <a href="https://github.com/SSHdotCodes/second-opinion">GitHub</a>
           <a href="#teams">Worker teams</a>
+          <a href="#images">Image tools</a>
           <a href="#benchmarks">Benchmarks</a>
           <a href="#manager">Task manager</a>
           <a href="#commands">Commands</a>
@@ -366,7 +367,7 @@
         <div>
           <h1>Second Opinion</h1>
           <p class="lead">
-            Turn Codex, Claude Code, OpenCode, Grok Build, and Google Antigravity into parallel, model-agnostic worker teams for implementation and review.
+            Turn Codex, Claude Code, OpenCode, Grok Build, and Google Antigravity into parallel, model-agnostic worker teams for implementation, review, and visual creation.
             Route with keyless Artificial Analysis benchmarks, then steer every task in a fast, low-memory native window. Each worker keeps its own CLI, account, model access, provider setup, and safety settings.
           </p>
           <div class="actions">
@@ -382,6 +383,7 @@
           <pre>curl -fsSL https://second-opinion.ssh.codes/install.sh | bash
 
 second-opinion team codex --from claude --count 5 --model gpt-5.6-luna --reasoning xhigh -- "Build and verify this in parallel."
+second-opinion image-tools --available --json
 second-opinion app
 
 second-opinion update</pre>
@@ -415,6 +417,23 @@ second-opinion update</pre>
               <p>Mix builders and independent reviewers while the parent orchestrator keeps working, steers tasks, and synthesizes results.</p>
             </article>
           </div>
+        </div>
+      </section>
+
+      <section id="images">
+        <div class="wrap">
+          <div class="section-head">
+            <div>
+              <h2>Generate the visual direction first</h2>
+              <p>Discover image tools already available inside coding harnesses, turn a screenshot and brief into a verified raster concept, then hand that artifact to a design-strong implementation worker such as Claude Opus. Codex's built-in imagegen capability is detected automatically.</p>
+            </div>
+          </div>
+          <div class="commands">
+            <div class="command"><strong>Discover image tools</strong><code>second-opinion image-tools --available --json</code></div>
+            <div class="command"><strong>Create a concept</strong><code>second-opinion image auto --from claude --cwd "$PWD" --reference current.png --output design/concept.png --background -- "Overhaul this interface into a deliberate product design."</code></div>
+            <div class="command"><strong>Give it to Opus</strong><code>second-opinion ask claude --from codex --model opus --reasoning high --cwd "$PWD" --background -- "Implement design/concept.png with responsive, accessible code."</code></div>
+          </div>
+          <p>Second Opinion does not call an image API, install a generator, or handle image credentials. The chosen harness keeps its native auth, tools, model access, and safety policy. Missing, empty, unchanged, or invalid image artifacts fail instead of silently returning a text-only design.</p>
         </div>
       </section>
 
@@ -515,6 +534,8 @@ second-opinion update</pre>
             <div class="command"><strong>Five Codex workers</strong><code>second-opinion team codex --from claude --count 5 --strategy balanced --model gpt-5.6-luna --reasoning xhigh -- "Build and verify this in parallel."</code></div>
             <div class="command"><strong>Five Claude workers</strong><code>second-opinion team claude --from codex --count 5 --strategy build --model claude-sonnet-5 --reasoning xhigh -- "Implement non-overlapping slices."</code></div>
             <div class="command"><strong>Keyless benchmarks</strong><code>second-opinion benchmarks --kind all --limit 10 --json</code></div>
+            <div class="command"><strong>Image tools</strong><code>second-opinion image-tools --available --json</code></div>
+            <div class="command"><strong>Visual concept</strong><code>second-opinion image codex --from claude --cwd "$PWD" --reference current.png --output design/concept.png --background -- "Create a stronger visual direction."</code></div>
             <div class="command"><strong>Native manager</strong><code>second-opinion app</code></div>
             <div class="command"><strong>Terminal manager</strong><code>second-opinion tui</code></div>
             <div class="command"><strong>No window</strong><code>second-opinion ask auto --background --manager none -- "Review this patch."</code></div>

@@ -9,6 +9,7 @@ import sys
 import tempfile
 import time
 import unittest
+from unittest import mock
 from pathlib import Path
 
 
@@ -41,6 +42,10 @@ class RegistryTests(unittest.TestCase):
             self.assertIn("second-opinion wait JOB_ID", skill)
             self.assertIn("second-opinion team codex", skill)
             self.assertIn("second-opinion benchmarks --kind models", skill)
+            self.assertIn("second-opinion image-tools --available --json", skill)
+            self.assertIn("second-opinion image auto", skill)
+            self.assertIn("SECOND_OPINION_IMAGE", skill)
+            self.assertIn("Opus-class Claude worker", skill)
             self.assertIn("needs no API key", skill)
             self.assertIn("worker-pool orchestrator, not only a review tool", skill)
             self.assertIn("model agnostic", skill)
@@ -178,7 +183,7 @@ class CliCommandTests(unittest.TestCase):
             result = self.run_cli("status", "--json", home=Path(temp))
             self.assertEqual(result.returncode, 0, result.stderr)
             payload = json.loads(result.stdout)
-            self.assertEqual(payload["version"], "1.6.1")
+            self.assertEqual(payload["version"], "1.7.0")
             self.assertIn("codex", payload["agents"])
             self.assertIn("antigravity", payload["agents"])
 
@@ -281,13 +286,260 @@ class CliCommandTests(unittest.TestCase):
             path = home / ".gemini/antigravity/skills/second-opinion/SKILL.md"
             self.assertTrue(path.exists(), path)
 
+    def test_image_tools_detects_codex_builtin_skill(self):
+        module = load_cli_module()
+        with tempfile.TemporaryDirectory() as temp:
+            home = Path(temp)
+            skill = home / ".codex/skills/.system/imagegen/SKILL.md"
+            skill.parent.mkdir(parents=True)
+            skill.write_text("---\nname: imagegen\n---\n", encoding="utf-8")
+            previous_detect = module.detect_agents
+            previous_codex_home = os.environ.get("CODEX_HOME")
+            module.detect_agents = lambda: {
+                key: {"command_path": f"/bin/{agent.command}"}
+                for key, agent in module.AGENTS.items()
+            }
+            os.environ["CODEX_HOME"] = str(home / ".codex")
+            try:
+                capabilities = module.detect_image_tools(home)
+            finally:
+                module.detect_agents = previous_detect
+                if previous_codex_home is None:
+                    os.environ.pop("CODEX_HOME", None)
+                else:
+                    os.environ["CODEX_HOME"] = previous_codex_home
+            self.assertTrue(capabilities["codex"]["available"])
+            self.assertEqual(capabilities["codex"]["source"], "skill")
+            self.assertEqual(capabilities["codex"]["tool"], "imagegen / image_gen")
+            self.assertEqual(capabilities["codex"]["models"], ["provider-default"])
+            self.assertEqual(capabilities["claude"]["available"], False)
+
+    def test_declared_image_tool_enables_an_existing_harness(self):
+        module = load_cli_module()
+        previous = os.environ.get("SECOND_OPINION_IMAGE_TOOLS")
+        previous_models = os.environ.get("SECOND_OPINION_IMAGE_MODELS")
+        previous_detect = module.detect_agents
+        os.environ["SECOND_OPINION_IMAGE_TOOLS"] = "claude=CreateImage"
+        os.environ["SECOND_OPINION_IMAGE_MODELS"] = "claude=canvas-v2|canvas-fast"
+        module.detect_agents = lambda: {
+            key: {"command_path": f"/bin/{agent.command}"}
+            for key, agent in module.AGENTS.items()
+        }
+        try:
+            capabilities = module.detect_image_tools(Path("/definitely/missing"))
+        finally:
+            module.detect_agents = previous_detect
+            if previous is None:
+                os.environ.pop("SECOND_OPINION_IMAGE_TOOLS", None)
+            else:
+                os.environ["SECOND_OPINION_IMAGE_TOOLS"] = previous
+            if previous_models is None:
+                os.environ.pop("SECOND_OPINION_IMAGE_MODELS", None)
+            else:
+                os.environ["SECOND_OPINION_IMAGE_MODELS"] = previous_models
+        self.assertTrue(capabilities["claude"]["available"])
+        self.assertEqual(capabilities["claude"]["tool"], "CreateImage")
+        self.assertEqual(capabilities["claude"]["source"], "declared")
+        self.assertEqual(capabilities["claude"]["models"], ["canvas-v2", "canvas-fast"])
+
+    def test_image_dry_run_attaches_references_and_requires_raster_artifact(self):
+        reference = ROOT / "docs/images/second-opinion-task-manager.jpg"
+        result = self.run_cli(
+            "image",
+            "codex",
+            "--cwd",
+            str(ROOT),
+            "--output",
+            "tmp/concept.png",
+            "--reference",
+            str(reference),
+            "--image-model",
+            "provider-image-model",
+            "--dry-run",
+            "--",
+            "Create a deliberate visual overhaul",
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("codex exec", result.stdout)
+        self.assertIn("--image", result.stdout)
+        self.assertIn(str(reference), result.stdout)
+        self.assertIn(str(ROOT / "tmp/concept.png"), result.stdout)
+        self.assertIn("provider-image-model", result.stdout)
+        self.assertIn("Do not substitute HTML, CSS, SVG", result.stdout)
+        self.assertIn("SECOND_OPINION_IMAGE", result.stdout)
+
+    def test_image_references_use_each_supported_native_cli_flag(self):
+        reference = ROOT / "docs/images/second-opinion-task-manager.jpg"
+        cases = (
+            ("claude", "--add-dir"),
+            ("opencode", "--file"),
+            ("antigravity", "--add-dir"),
+        )
+        for agent, expected_flag in cases:
+            with self.subTest(agent=agent):
+                result = self.run_cli(
+                    "image",
+                    agent,
+                    "--cwd",
+                    str(ROOT),
+                    "--output",
+                    f"tmp/{agent}-concept.png",
+                    "--reference",
+                    str(reference),
+                    "--dry-run",
+                    "--",
+                    "Create a visual concept",
+                )
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertIn(expected_flag, result.stdout)
+                self.assertIn(str(reference), result.stdout)
+
+    def test_image_output_must_stay_inside_workspace(self):
+        with tempfile.TemporaryDirectory() as temp:
+            workspace = Path(temp) / "workspace"
+            workspace.mkdir()
+            result = self.run_cli(
+                "image",
+                "codex",
+                "--cwd",
+                str(workspace),
+                "--output",
+                str(Path(temp) / "outside.png"),
+                "--dry-run",
+                "--",
+                "Create an image",
+            )
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("must stay inside the workspace", result.stderr)
+
+    def test_image_artifact_validation_checks_signature_and_updates(self):
+        module = load_cli_module()
+        with tempfile.TemporaryDirectory() as temp:
+            image = Path(temp) / "result.png"
+            image.write_bytes(b"not an image")
+            self.assertIn("not a valid", module.validate_image_artifact(image))
+            image.write_bytes(b"\x89PNG\r\n\x1a\n" + b"test payload")
+            before = module.artifact_fingerprint(image)
+            self.assertIsNone(module.validate_image_artifact(image))
+            self.assertIn("did not update", module.validate_image_artifact(image, before))
+
+    def test_image_tools_json_is_machine_readable(self):
+        result = self.run_cli("image-tools", "--json")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        payload = json.loads(result.stdout)
+        self.assertEqual(payload["capability"], "image-generation")
+        self.assertIn("codex", payload["agents"])
+        self.assertIn("available", payload["agents"]["codex"])
+
+    def test_foreground_image_run_verifies_and_reports_the_artifact(self):
+        module = load_cli_module()
+        with tempfile.TemporaryDirectory() as temp:
+            workspace = Path(temp)
+            output_path = workspace / "art/concept.png"
+            args = module.build_parser().parse_args(
+                [
+                    "image",
+                    "codex",
+                    "--cwd",
+                    str(workspace),
+                    "--output",
+                    "art/concept.png",
+                    "--task",
+                    "Create the visual concept",
+                ]
+            )
+
+            def fake_run(command, **_kwargs):
+                output_path.write_bytes(b"\x89PNG\r\n\x1a\n" + b"generated image payload")
+                return subprocess.CompletedProcess(command, 0, "native image tool finished\n", "")
+
+            capability = {"available": True, "tool": "imagegen / image_gen"}
+            stdout = io.StringIO()
+            stderr = io.StringIO()
+            with (
+                mock.patch.object(module, "choose_image_agent", return_value=(module.AGENTS["codex"], capability)),
+                mock.patch.object(module.subprocess, "run", side_effect=fake_run),
+                contextlib.redirect_stdout(stdout),
+                contextlib.redirect_stderr(stderr),
+            ):
+                rc = module.cmd_image(args)
+
+            self.assertEqual(rc, 0, stderr.getvalue())
+            self.assertTrue(output_path.exists())
+            self.assertIn(f"SECOND_OPINION_IMAGE: {output_path.resolve()}", stdout.getvalue())
+
+    def test_background_worker_verifies_image_artifact(self):
+        module = load_cli_module()
+        with tempfile.TemporaryDirectory() as temp:
+            previous_home = os.environ.get("SECOND_OPINION_HOME")
+            os.environ["SECOND_OPINION_HOME"] = temp
+            try:
+                workspace = Path(temp) / "workspace"
+                workspace.mkdir()
+                output_path = workspace / "generated.png"
+                job_id = "managed-image-task"
+                meta_path, log_path = module.job_paths(job_id)
+                meta_path.parent.mkdir(parents=True)
+                command = [
+                    sys.executable,
+                    "-c",
+                    f"from pathlib import Path; Path({str(output_path)!r}).write_bytes(b'\\x89PNG\\r\\n\\x1a\\nbackground payload')",
+                ]
+                module.atomic_write_json(
+                    meta_path,
+                    {
+                        "schema_version": 2,
+                        "id": job_id,
+                        "pid": None,
+                        "worker_pid": None,
+                        "agent": "codex",
+                        "agent_name": "Codex",
+                        "mode": "work",
+                        "cwd": str(workspace),
+                        "log_path": str(log_path),
+                        "task": "Create a visual",
+                        "model": None,
+                        "reasoning": None,
+                        "kind": "image",
+                        "artifact_path": str(output_path),
+                        "reference_paths": [],
+                        "trust": False,
+                        "archived": False,
+                        "stop_requested": False,
+                        "state": "queued",
+                        "turns": [
+                            {
+                                "id": "initial-image-turn",
+                                "kind": "initial",
+                                "message": "Create a visual",
+                                "command": command,
+                                "status": "queued",
+                            }
+                        ],
+                    },
+                )
+                log_path.write_text("", encoding="utf-8")
+
+                rc = module.run_job_worker(job_id)
+                payload = module.read_job(job_id)
+
+                self.assertEqual(rc, 0)
+                self.assertEqual(payload["state"], "finished")
+                self.assertTrue(output_path.exists())
+                self.assertIn(f"SECOND_OPINION_IMAGE: {output_path}", log_path.read_text(encoding="utf-8"))
+            finally:
+                if previous_home is None:
+                    os.environ.pop("SECOND_OPINION_HOME", None)
+                else:
+                    os.environ["SECOND_OPINION_HOME"] = previous_home
+
     def test_timeout_flag_is_deprecated_noop(self):
         module = load_cli_module()
         source = CLI.read_text(encoding="utf-8")
         self.assertIn("Deprecated and ignored", source)
         self.assertNotIn("TimeoutExpired", source)
         self.assertNotIn("subprocess.TimeoutExpired", source)
-        self.assertEqual(module.VERSION, "1.6.1")
+        self.assertEqual(module.VERSION, "1.7.0")
 
     def test_reasoning_effort_uses_each_native_harness_flag(self):
         cases = (

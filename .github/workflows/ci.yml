@@ -40,3 +40,5 @@ jobs:
           python bin/second-opinion --version
           python bin/second-opinion ask codex --dry-run --manager none -- "CI harness smoke test"
           python bin/second-opinion team codex --count 5 --strategy balanced --model gpt-5.6-luna --reasoning xhigh --dry-run --manager none -- "CI parallel team smoke test"
+          python bin/second-opinion image-tools --json
+          python bin/second-opinion image codex --cwd . --output tmp/ci-concept.png --dry-run --manager none -- "CI native image tool smoke test"
