@@ -1,5 +1,7 @@
 import importlib.util
 import importlib.machinery
+import contextlib
+import io
 import json
 import os
 import subprocess
@@ -90,7 +92,7 @@ class CliCommandTests(unittest.TestCase):
         if home:
             env["SECOND_OPINION_HOME"] = str(home)
         return subprocess.run(
-            [str(CLI), *args],
+            [sys.executable, str(CLI), *args],
             cwd=str(ROOT),
             env=env,
             text=True,
@@ -120,7 +122,7 @@ class CliCommandTests(unittest.TestCase):
             result = self.run_cli("status", "--json", home=Path(temp))
             self.assertEqual(result.returncode, 0, result.stderr)
             payload = json.loads(result.stdout)
-            self.assertEqual(payload["version"], "1.4.0")
+            self.assertEqual(payload["version"], "1.5.0")
             self.assertIn("codex", payload["agents"])
             self.assertIn("antigravity", payload["agents"])
 
@@ -229,7 +231,7 @@ class CliCommandTests(unittest.TestCase):
         self.assertIn("Deprecated and ignored", source)
         self.assertNotIn("TimeoutExpired", source)
         self.assertNotIn("subprocess.TimeoutExpired", source)
-        self.assertEqual(module.VERSION, "1.4.0")
+        self.assertEqual(module.VERSION, "1.5.0")
 
     def test_obsolete_freedomclaude_flags_are_noops(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -259,6 +261,7 @@ class CliCommandTests(unittest.TestCase):
             self.assertEqual(update_result.returncode, 0, update_result.stderr)
 
     def test_update_replaces_cli_from_base_url(self):
+        module = load_cli_module()
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             site_bin = root / "site/bin"
@@ -280,19 +283,30 @@ class CliCommandTests(unittest.TestCase):
             )
             target.chmod(0o755)
 
-            result = self.run_cli(
-                "update",
-                "--base-url",
-                (root / "site").as_uri(),
-                "--path",
-                str(target),
-                "--skip-skills",
-                home=root / "home",
-            )
-            self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertIn("Updated Second Opinion CLI to 9.9.9", result.stdout)
+            output = io.StringIO()
+            args = type(
+                "UpdateArgs",
+                (),
+                {
+                    "home": str(root / "home"),
+                    "path": str(target),
+                    "base_url": (root / "site").as_uri(),
+                    "force": False,
+                    "dry_run": False,
+                    "skip_skills": True,
+                    "all_skills": False,
+                },
+            )()
+            with contextlib.redirect_stdout(output):
+                rc = module.cmd_update(args)
+            self.assertEqual(rc, 0)
+            self.assertIn("Updated Second Opinion CLI to 9.9.9", output.getvalue())
             self.assertIn('VERSION = "9.9.9"', target.read_text(encoding="utf-8"))
 
+    @unittest.skipIf(
+        os.name == "nt",
+        "Windows hosted runners cannot safely nest a detached console worker inside unittest.",
+    )
     def test_background_job_writes_log_and_metadata(self):
         module = load_cli_module()
         with tempfile.TemporaryDirectory() as temp:
@@ -323,17 +337,132 @@ class CliCommandTests(unittest.TestCase):
                 self.assertEqual(len(jobs), 1)
                 payload = json.loads(jobs[0].read_text(encoding="utf-8"))
                 self.assertEqual(payload["goal"], "finish test goal")
+                self.assertEqual(payload["schema_version"], 2)
+                self.assertEqual(payload["turns"][0]["kind"], "initial")
                 log_path = Path(payload["log_path"])
                 for _ in range(50):
-                    if log_path.exists() and "BACKGROUND_OK" in log_path.read_text(encoding="utf-8"):
+                    payload = json.loads(jobs[0].read_text(encoding="utf-8"))
+                    if (
+                        log_path.exists()
+                        and "BACKGROUND_OK" in log_path.read_text(encoding="utf-8")
+                        and payload.get("state") == "finished"
+                        and payload.get("worker_pid") is None
+                    ):
                         break
                     time.sleep(0.1)
                 self.assertIn("BACKGROUND_OK", log_path.read_text(encoding="utf-8"))
+                self.assertEqual(payload["state"], "finished")
+                self.assertIsNone(payload["worker_pid"])
+                for process in module.DETACHED_PROCESSES:
+                    process.wait(timeout=5)
+                module.reap_detached_processes()
             finally:
                 if previous_home is None:
                     os.environ.pop("SECOND_OPINION_HOME", None)
                 else:
                     os.environ["SECOND_OPINION_HOME"] = previous_home
+
+    def test_worker_process_group_options_are_platform_safe(self):
+        module = load_cli_module()
+        options = module.process_group_options(detach_console=True)
+        if os.name == "nt":
+            self.assertIn("creationflags", options)
+            self.assertTrue(options["creationflags"] & subprocess.CREATE_NEW_PROCESS_GROUP)
+            self.assertTrue(options["creationflags"] & subprocess.DETACHED_PROCESS)
+        else:
+            self.assertEqual(options, {"start_new_session": True})
+
+    def test_steering_queues_a_native_harness_turn_with_changed_model(self):
+        module = load_cli_module()
+        with tempfile.TemporaryDirectory() as temp:
+            previous_home = os.environ.get("SECOND_OPINION_HOME")
+            os.environ["SECOND_OPINION_HOME"] = temp
+            try:
+                job_id = "managed-codex-task"
+                meta_path, log_path = module.job_paths(job_id)
+                meta_path.parent.mkdir(parents=True)
+                log_path.write_text("Initial result\n", encoding="utf-8")
+                module.atomic_write_json(
+                    meta_path,
+                    {
+                        "schema_version": 2,
+                        "id": job_id,
+                        "pid": os.getpid(),
+                        "worker_pid": os.getpid(),
+                        "agent": "codex",
+                        "agent_name": "Codex",
+                        "mode": "consult",
+                        "cwd": temp,
+                        "log_path": str(log_path),
+                        "task": "Review the parser",
+                        "model": None,
+                        "trust": False,
+                        "archived": False,
+                        "stop_requested": False,
+                        "state": "running",
+                        "turns": [],
+                    },
+                )
+
+                module.queue_job_message(job_id, "Focus on malformed input next.")
+                module.set_job_model(job_id, "gpt-5.6-codex")
+                payload = module.read_job(job_id)
+                self.assertEqual(payload["model"], "gpt-5.6-codex")
+                self.assertEqual(len(payload["turns"]), 1)
+                turn = payload["turns"][0]
+                self.assertEqual(turn["kind"], "steer")
+                self.assertEqual(turn["message"], "Focus on malformed input next.")
+                self.assertIn("--model", turn["command"])
+                self.assertIn("gpt-5.6-codex", turn["command"])
+                self.assertIn("Initial result", turn["command"][-1])
+            finally:
+                if previous_home is None:
+                    os.environ.pop("SECOND_OPINION_HOME", None)
+                else:
+                    os.environ["SECOND_OPINION_HOME"] = previous_home
+
+    def test_background_manager_defaults_and_opt_out_flags(self):
+        module = load_cli_module()
+        previous = os.environ.pop("SECOND_OPINION_MANAGER", None)
+        try:
+            parser = module.build_parser()
+            default_args = parser.parse_args(
+                ["ask", "codex", "--background", "--task", "review"]
+            )
+            terminal_args = parser.parse_args(
+                [
+                    "ask",
+                    "codex",
+                    "--background",
+                    "--manager",
+                    "terminal",
+                    "--task",
+                    "review",
+                ]
+            )
+            no_window_args = parser.parse_args(
+                ["ask", "codex", "--background", "--no-window", "--task", "review"]
+            )
+            self.assertEqual(default_args.manager, "app")
+            self.assertEqual(terminal_args.manager, "terminal")
+            self.assertEqual(no_window_args.manager, "none")
+        finally:
+            if previous is not None:
+                os.environ["SECOND_OPINION_MANAGER"] = previous
+
+    def test_manager_environment_default_is_validated(self):
+        module = load_cli_module()
+        previous = os.environ.get("SECOND_OPINION_MANAGER")
+        try:
+            os.environ["SECOND_OPINION_MANAGER"] = "terminal"
+            self.assertEqual(module.default_manager(), "terminal")
+            os.environ["SECOND_OPINION_MANAGER"] = "unexpected"
+            self.assertEqual(module.default_manager(), "app")
+        finally:
+            if previous is None:
+                os.environ.pop("SECOND_OPINION_MANAGER", None)
+            else:
+                os.environ["SECOND_OPINION_MANAGER"] = previous
 
 
 if __name__ == "__main__":

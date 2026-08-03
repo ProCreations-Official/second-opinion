@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Python ${{ matrix.python }} · ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python: ["3.10", "3.13"]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Compile CLI
+        run: python -m py_compile bin/second-opinion
+
+      - name: Run unit and integration tests
+        shell: bash
+        run: python -m unittest discover -s tests -v
+
+      - name: Smoke-test command surface
+        shell: bash
+        run: |
+          python bin/second-opinion --version
+          python bin/second-opinion ask codex --dry-run --manager none -- "CI harness smoke test"
