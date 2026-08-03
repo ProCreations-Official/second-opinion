@@ -6,6 +6,10 @@ Second Opinion turns installed AI coding agents into steerable, parallel worker 
 
 Background tasks open a separate, lightweight native task-manager window by default. It shows every active Second Opinion task—even tasks another coding agent started—and lets you steer the work, send follow-up messages, choose the model for the next turn, stop or retry a run, and archive finished tasks. The manager is built with Python's native Tk toolkit rather than Electron, a browser, or an always-on server, so it starts quickly and keeps memory use small on macOS, Windows, and Linux.
 
+[![Second Opinion task manager showing two Grok 4.5 workers spawned by Claude Code](docs/images/second-opinion-task-manager.jpg)](docs/images/second-opinion-task-manager.jpg)
+
+*Claude Code orchestrating two Grok 4.5 review workers in the native task manager. Each worker has an independent role and native Grok Build context, with model and effort controls, live output, follow-up messaging, retry, stop, and archive actions in one place.*
+
 For example, Claude Code can orchestrate five fresh Codex workers using GPT-5.6 Luna at `xhigh`: one implements, one writes tests, two inspect different risks, and one handles integration. Luna can make that pool much cheaper while parallel work improves throughput. The direction is completely reversible: Codex can orchestrate Claude Sonnet 5 workers, Grok 4.5 workers through Grok Build, or any supported model the selected harness can access. Each worker keeps its native CLI's auth, model access, tools, and safety behavior.
 
 Second Opinion is model agnostic. It routes between installed agent surfaces and the user's existing model/provider setup instead of hardcoding one model. The generated skills teach each parent agent to reason about when another chat is useful, which agent's strongest capabilities fit the scenario, and when a same-agent fresh-context pass is the only sensible option.
@@ -162,7 +166,7 @@ second-opinion tui   # interactive manager in the current terminal
 Both surfaces operate only on Second Opinion's records under `~/.second-opinion/jobs/` and provide the same core controls:
 
 - See active, queued, finished, failed, stopped, and archived tasks.
-- Read live output without loading unbounded logs into memory.
+- Read live output without loading unbounded logs into memory. The native app renders headings, emphasis, lists, task lists, quotes, tables, code, and safe clickable web links as Markdown.
 - Send a steering message while a task is running; it queues behind the current turn.
 - Change the model and provider-native reasoning effort/variant passed to the task's next invocation. Leave either blank to use the provider default.
 - Stop, retry, archive, or restore tasks.
