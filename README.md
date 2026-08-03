@@ -1,6 +1,10 @@
 # Second Opinion
 
+[![CI](https://github.com/SSHdotCodes/second-opinion/actions/workflows/ci.yml/badge.svg)](https://github.com/SSHdotCodes/second-opinion/actions/workflows/ci.yml)
+
 Second Opinion lets installed AI coding agents use each other as opt-in subagents.
+
+Background tasks open a separate, lightweight native task-manager window by default. It shows every active Second Opinion task—even tasks another coding agent started—and lets you steer the work, send follow-up messages, choose the model for the next turn, stop or retry a run, and archive finished tasks. The manager is built with Python's native Tk toolkit rather than Electron, a browser, or an always-on server, so it starts quickly and keeps memory use small on macOS, Windows, and Linux.
 
 If you are in Claude Code and want Codex to review a risky patch, Claude can run Second Opinion and delegate that slice to Codex. If you are in Codex, the same install gives Codex a skill for delegating to Claude Code, OpenCode, Grok Build, or Google Antigravity. Each agent keeps its own auth, model access, tools, and safety behavior.
 
@@ -82,7 +86,40 @@ second-opinion wait JOB_ID
 
 The installed skills teach each agent to start subagents in the background by default. That lets the parent agent continue its own non-overlapping work while the subagent runs. Later, the parent runs `second-opinion wait JOB_ID` to collect the subagent output.
 
+The native manager opens by default for a background task. Choose a separate terminal manager or no window at all per run:
+
+```bash
+second-opinion ask codex --background --manager app -- "Review the API changes."
+second-opinion ask claude --background --manager terminal -- "Polish the responsive UI."
+second-opinion ask grok --background --manager none -- "Explore two implementation options."
+second-opinion ask opencode --background --no-window -- "Run a quick model-flexible review."
+```
+
+Set `SECOND_OPINION_MANAGER=app|terminal|none` to change the default without modifying any agent application or configuration. If Tk is unavailable on a minimal Linux install, the task still starts and the CLI explains how to use `second-opinion tui` or install the distribution's `python3-tk` package.
+
 Use `work` mode by default. Work mode may edit files and should be assigned carefully so two agents do not edit the same files at the same time. Use explicit `--mode consult` for read-only review, planning, or risk analysis.
+
+## Task Manager
+
+Open either manager at any time:
+
+```bash
+second-opinion app   # detached native app window
+second-opinion tui   # interactive manager in the current terminal
+```
+
+Both surfaces operate only on Second Opinion's records under `~/.second-opinion/jobs/` and provide the same core controls:
+
+- See active, queued, finished, failed, stopped, and archived tasks.
+- Read live output without loading unbounded logs into memory.
+- Send a steering message while a task is running; it queues behind the current turn.
+- Change the model passed to the task's next native provider invocation. Leave it blank to use the provider default.
+- Stop, retry, archive, or restore tasks.
+- Start a new task with a chosen harness, workspace, mode, and optional model.
+
+The harness is task-specific and stays task-specific: Codex turns run through `codex exec`, Claude Code through `claude -p`, OpenCode through `opencode run`, Grok through `grok -p`, and Antigravity through `agy --print`. Follow-up messages invoke that same harness with the prior result context. A model change does not hot-swap a provider process that is already running; it applies to the next turn, or you can stop and retry immediately.
+
+Closing a manager window does not stop an agent task. Normal foreground CLI use loads no GUI modules, starts no manager process, and behaves as before. Second Opinion never embeds into or edits the Codex, Claude Code, Grok, OpenCode, or Antigravity applications.
 
 ## Goal Mode
 
@@ -126,8 +163,13 @@ second-opinion status --json
 second-opinion choose --from claude --task "review auth flow"
 second-opinion ask auto --from claude --cwd "$PWD" --mode consult --background -- "Investigate failing tests."
 second-opinion ask auto --from claude --cwd "$PWD" --mode work --background --goal "Finish the migration tests and report blockers." -- "Work toward this goal in the assigned files only."
+second-opinion ask auto --from claude --cwd "$PWD" --background --manager terminal -- "Open the terminal task manager."
+second-opinion ask auto --from claude --cwd "$PWD" --background --manager none -- "Do not open a manager window."
 second-opinion jobs
+second-opinion jobs --all
 second-opinion wait JOB_ID
+second-opinion app
+second-opinion tui
 second-opinion commands
 second-opinion doctor
 ```
@@ -137,11 +179,13 @@ second-opinion doctor
 Second Opinion is intentionally small:
 
 - No server is required.
+- No browser or Electron runtime is required; the optional native window uses Tk and caps displayed log data.
 - No API keys are handled by Second Opinion.
 - Each target agent runs through its own installed CLI.
 - Claude Code runs through its documented `claude -p` non-interactive mode.
 - All agent instructions are regular skill files that users can inspect.
 - The subagent prompt includes anti-recursion and scope-isolation rules.
+- The manager starts only for a Second Opinion background task (unless opened explicitly) and can be disabled with `--manager none`.
 
 ## Local Development
 

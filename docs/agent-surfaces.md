@@ -22,7 +22,7 @@ second-opinion jobs
 second-opinion wait JOB_ID
 ```
 
-`--background` is the default workflow taught to installed agent skills. It returns a job id immediately, writes output under `~/.second-opinion/jobs/`, and lets the parent agent keep working while the subagent runs.
+`--background` is the default workflow taught to installed agent skills. It returns a job id immediately, writes output under `~/.second-opinion/jobs/`, and lets the parent agent keep working while the subagent runs. It also opens the native task manager by default; use `--manager terminal` or `--manager none` to choose a terminal window or no window.
 
 The CLI wraps the target agent's documented non-interactive mode:
 
@@ -31,6 +31,12 @@ The CLI wraps the target agent's documented non-interactive mode:
 - OpenCode: `opencode run`
 - Grok Build: `grok -p`
 - Google Antigravity: `agy --print`
+
+## Manager Surfaces
+
+`second-opinion app` opens a separate cross-platform Tk window. `second-opinion tui` offers the same core workflow in a terminal. Both discover jobs from Second Opinion's own local job directory, including tasks spawned by a coding agent, and support live output, steering messages, next-turn model overrides, stop, retry, archive, restore, and task creation.
+
+The manager never embeds into an agent application. It stays idle except for a small metadata/log poll and caps the displayed output. Closing it does not terminate active agent jobs. Follow-up messages launch through the existing task's same native harness and preserve recent output context.
 
 ## Routing Tips
 
