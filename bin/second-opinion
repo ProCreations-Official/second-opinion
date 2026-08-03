@@ -817,9 +817,12 @@ def job_status(job: dict[str, object]) -> str:
     return "finished"
 
 
-def process_group_options() -> dict[str, object]:
+def process_group_options(*, detach_console: bool = False) -> dict[str, object]:
     if os.name == "nt":
-        return {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP}
+        flags = subprocess.CREATE_NEW_PROCESS_GROUP
+        if detach_console:
+            flags |= subprocess.DETACHED_PROCESS
+        return {"creationflags": flags}
     return {"start_new_session": True}
 
 
@@ -836,7 +839,7 @@ def spawn_job_worker(job_id: str) -> int:
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             close_fds=True,
-            **process_group_options(),
+            **process_group_options(detach_console=True),
         )
     except OSError:
         update_job(job_id, lambda job: job.update({"state": "failed"}))
@@ -1336,7 +1339,7 @@ def launch_native_app(job_id: str | None = None) -> tuple[bool, str]:
         stdout=log_file,
         stderr=subprocess.STDOUT,
         close_fds=True,
-        **process_group_options(),
+        **process_group_options(detach_console=True),
     )
     log_file.close()
     atomic_write_json(state_path, {"pid": process.pid, "started_at": timestamp()})
