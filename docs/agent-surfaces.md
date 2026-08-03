@@ -34,6 +34,14 @@ The CLI wraps the target agent's documented non-interactive mode:
 - Grok Build: `grok -p`
 - Google Antigravity: `agy --print`
 
+## Native image creation
+
+`second-opinion image-tools --json` reports image-generation capabilities and provider-native generator choices detected from native harness skills. Codex's built-in `imagegen` skill is discovered automatically. A provider tool that is available at runtime but not represented by a discoverable skill can be declared for automatic routing with `SECOND_OPINION_IMAGE_TOOLS=agent=tool`; optional selectable generator names can be advertised with `SECOND_OPINION_IMAGE_MODELS='agent=model-a|model-b'`. An explicit `second-opinion image <agent>` request can also try a tool without a declaration.
+
+`second-opinion image` launches the selected coding harness in work mode with a specialized artifact contract. References use `codex exec --image` and `opencode run --file` where available; Claude Code and Antigravity receive additional readable directories; every provider also receives absolute reference paths in the task. The worker must use its native image tool and save a valid raster image at the requested workspace path. Missing, empty, unchanged, or signature-invalid artifacts fail the task.
+
+The command never calls an image API directly, installs a generator, or handles image credentials. `--model` selects the coding model supervising the task, while `--image-model` is only a request to a generator already exposed by that harness. Background image runs are ordinary managed Second Opinion tasks, so they appear in the app/TUI and support steering, retry, model changes, and archive controls.
+
 ## Manager Surfaces
 
 `second-opinion app` opens a separate cross-platform Tk window. `second-opinion tui` offers the same core workflow in a terminal. Both discover jobs from Second Opinion's own local job directory, including teams and tasks spawned by a coding agent, and support live output, steering messages, next-turn model and reasoning-effort overrides, stop, retry, archive, restore, and task creation.

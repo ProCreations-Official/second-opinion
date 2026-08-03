@@ -6,10 +6,13 @@
 
 - Lightweight native Markdown rendering for task output, including headings, emphasis, lists, task lists, quotes, tables, fenced and inline code, and safe clickable HTTP(S)/email links.
 - A real task-manager screenshot showing Claude Code orchestrating two Grok 4.5 workers.
+- `second-opinion image-tools` for machine-readable discovery of native image-generation capabilities exposed by installed coding harnesses.
+- `second-opinion image` for reference-aware, foreground or managed-background image creation through a selected harness's existing native tool.
+- Strict raster artifact verification and an explicit design-concept-to-implementation-worker handoff workflow.
 
 ### Changed
 
-- The internal CLI version advances from 1.6.0 to 1.6.1 so existing installations detect the Markdown-rendering update.
+- The internal CLI version advances from 1.6.1 to 1.7.0 so existing installations detect the native image-generation workflow.
 
 ## GitHub Release 1.0.1 — 2026-08-03
 

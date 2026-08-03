@@ -90,6 +90,37 @@ second-opinion wait JOB_ID
 
 The installed skills teach each agent to start subagents in the background by default. That lets the parent agent continue its own non-overlapping work while the subagent runs. Later, the parent runs `second-opinion wait JOB_ID` to collect the subagent output.
 
+## Native Image Creation
+
+Second Opinion can ask a coding harness to use an image-generation tool it already exposes. The manager model first discovers eligible harnesses, then requests a real raster artifact with a strict output contract:
+
+```bash
+second-opinion image-tools --available --json
+
+second-opinion image auto \
+  --from claude \
+  --cwd "$PWD" \
+  --reference screenshots/current-home.png \
+  --output design/homepage-concept.png \
+  --background \
+  --manager none \
+  -- "Overhaul this homepage into a deliberate, distinctive product design."
+```
+
+Codex's built-in `imagegen` / `image_gen` capability is detected automatically. `image-tools --json` reports provider-native generator choices (`provider-default` when the harness does not expose a model list). `--reference` is repeatable; Codex and OpenCode receive references through their native image/file flags, while other harnesses receive readable local paths and additional-directory access where supported. An explicit target can also try a provider tool that cannot be detected statically. Declare such an existing tool for `auto` routing with `SECOND_OPINION_IMAGE_TOOLS=claude=CreateImage,opencode=imagegen`; optionally advertise selectable generators with `SECOND_OPINION_IMAGE_MODELS='claude=canvas-v2|canvas-fast'`.
+
+Second Opinion does not generate the pixels itself, install an image tool, request credentials, or handle image API keys. The selected coding harness uses its existing authentication, native tools, model access, and safety policy. The command fails when the requested artifact is missing, empty, unchanged, or not a valid PNG, JPEG, WebP, or GIF, so an orchestrator cannot accidentally hand a text-only “design” to its implementation worker.
+
+This enables the exact design handoff suggested in the feedback: generate a visual direction first, inspect it, then give the artifact and original constraints to a design-strong worker such as Claude Opus:
+
+```bash
+second-opinion wait IMAGE_JOB_ID
+second-opinion ask claude --from codex --model opus --reasoning high --cwd "$PWD" --background -- \
+  "Implement the approved design in design/homepage-concept.png. Preserve accessibility and responsive behavior."
+```
+
+Use `--model` to select the coding model supervising the image task. Use `--image-model` only when the native image tool already exposes a particular generator. Generated files must stay inside `--cwd`, existing artifacts require `--force`, and normal `ask`/`team` usage remains unchanged.
+
 ## Parallel Worker Teams
 
 `second-opinion team` starts one independent native harness process and fresh context per worker. The parent remains the orchestrator and can continue working, steer each task, change its next-turn model/effort, and synthesize the results.
@@ -222,6 +253,8 @@ second-opinion team codex --from claude --count 5 --strategy balanced --model gp
 second-opinion team claude --from codex --count 5 --strategy build --model claude-sonnet-5 --reasoning xhigh --manager none -- "Implement non-overlapping slices."
 second-opinion benchmarks --kind models --sort coding --max-cost 0.50 --json
 second-opinion benchmarks --kind agents --sort agent-score --json
+second-opinion image-tools --available --json
+second-opinion image codex --from claude --cwd "$PWD" --reference current.png --output design/concept.png --background -- "Create a stronger visual direction."
 second-opinion ask auto --from claude --cwd "$PWD" --mode work --background --goal "Finish the migration tests and report blockers." -- "Work toward this goal in the assigned files only."
 second-opinion ask auto --from claude --cwd "$PWD" --background --manager terminal -- "Open the terminal task manager."
 second-opinion ask auto --from claude --cwd "$PWD" --background --manager none -- "Do not open a manager window."
@@ -241,6 +274,7 @@ Second Opinion is intentionally small:
 - No server is required.
 - No browser or Electron runtime is required; the optional native window uses Tk and caps displayed log data.
 - No API keys are handled by Second Opinion; its benchmark tool reads attributed public pages and needs no Artificial Analysis key.
+- Image creation runs through native tools already available in a selected coding harness; Second Opinion does not install generators or handle image API keys.
 - Each target agent runs through its own installed CLI.
 - Claude Code runs through its documented `claude -p` non-interactive mode.
 - All agent instructions are regular skill files that users can inspect.

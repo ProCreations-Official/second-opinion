@@ -10,12 +10,14 @@ Second Opinion is a local orchestration helper. It does not proxy prompts throug
 - Runs installed agent CLIs in non-interactive mode when asked.
 - Stores task metadata and logs under `~/.second-opinion/jobs/` so either local manager can show and steer delegated work.
 - Stores a small, public Artificial Analysis benchmark cache under `~/.second-opinion/cache/`. Benchmark fetches send no repository content, task text, credentials, or job metadata and require no API key.
+- Routes explicit `image` tasks through an image tool already exposed by a selected coding harness, attaches only the reference paths the user supplied, and verifies the requested workspace artifact before reporting success.
 - Opens an optional native Tk task-manager process for background tasks by default. `--manager terminal` uses a terminal window and `--manager none` opens nothing.
 
 ## What It Does Not Do
 
 - It does not modify model settings or pin a default model.
 - It does not read or write provider credentials.
+- It does not call image APIs directly, install image generators, or request image API keys.
 - It does not install MCP servers.
 - It does not install hooks.
 - It does not change agent permission settings.
@@ -43,3 +45,5 @@ Parallel `team` runs create multiple native harness processes. Give work-mode wo
 The generated skill tells parent agents not to pass secrets and not to create recursive delegation chains unless explicitly requested.
 
 Steering messages and model changes are written only to the selected task record. A steering turn runs through the task's original native agent harness and its existing local authentication. Changing a model affects a future turn; it does not mutate a provider process already running. Stopping a task terminates its process group but does not revert workspace edits that the task already made.
+
+Image outputs must resolve inside the selected workspace and use a supported raster extension. Existing outputs are preserved unless `--force` is explicit. Reference files may live elsewhere because Codex and OpenCode support native attachment flags and some other harnesses support additional readable directories; Second Opinion passes only paths named on the command line. A successful image task must create or update the artifact and pass a small constant-memory file-signature check.
