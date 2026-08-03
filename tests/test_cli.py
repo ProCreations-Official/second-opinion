@@ -1,5 +1,7 @@
 import importlib.util
 import importlib.machinery
+import contextlib
+import io
 import json
 import os
 import subprocess
@@ -259,6 +261,7 @@ class CliCommandTests(unittest.TestCase):
             self.assertEqual(update_result.returncode, 0, update_result.stderr)
 
     def test_update_replaces_cli_from_base_url(self):
+        module = load_cli_module()
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             site_bin = root / "site/bin"
@@ -280,17 +283,24 @@ class CliCommandTests(unittest.TestCase):
             )
             target.chmod(0o755)
 
-            result = self.run_cli(
-                "update",
-                "--base-url",
-                (root / "site").as_uri(),
-                "--path",
-                str(target),
-                "--skip-skills",
-                home=root / "home",
-            )
-            self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertIn("Updated Second Opinion CLI to 9.9.9", result.stdout)
+            output = io.StringIO()
+            args = type(
+                "UpdateArgs",
+                (),
+                {
+                    "home": str(root / "home"),
+                    "path": str(target),
+                    "base_url": (root / "site").as_uri(),
+                    "force": False,
+                    "dry_run": False,
+                    "skip_skills": True,
+                    "all_skills": False,
+                },
+            )()
+            with contextlib.redirect_stdout(output):
+                rc = module.cmd_update(args)
+            self.assertEqual(rc, 0)
+            self.assertIn("Updated Second Opinion CLI to 9.9.9", output.getvalue())
             self.assertIn('VERSION = "9.9.9"', target.read_text(encoding="utf-8"))
 
     def test_background_job_writes_log_and_metadata(self):
