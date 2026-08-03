@@ -31,9 +31,11 @@ jobs:
         run: python -m py_compile bin/second-opinion
 
       - name: Run unit and integration tests
+        shell: bash
         run: python -m unittest discover -s tests -v
 
       - name: Smoke-test command surface
+        shell: bash
         run: |
           python bin/second-opinion --version
           python bin/second-opinion ask codex --dry-run --manager none -- "CI harness smoke test"
